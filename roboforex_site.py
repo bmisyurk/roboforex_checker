@@ -1,11 +1,15 @@
 import re
 import json
 import time
+import os
+import shutil
 import logging
 from selenium import webdriver
 from datetime import datetime
 from webdriver_manager.chrome import ChromeDriverManager
 from telebot import TeleBot
+
+tmp_folder = 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
 
 with open('credentials_for_bot.json', 'r', encoding='utf-8') as bot_file, \
         open('config.json', 'r', encoding='utf-8') as config_file:
@@ -19,7 +23,7 @@ password = credentials_bot["rb"]["password"]
 
 options = webdriver.ChromeOptions()
 options.add_argument("--window-size=1920,1080")
-options.add_argument('headless')
+#options.add_argument('headless')
 
 
 def check_file_config():
@@ -42,11 +46,20 @@ def login_auth(driver):
     time.sleep(5)
 
 
-def main():
+def clean_tmp_folder():
+    for filename in os.listdir(tmp_folder):
+        try:
+            file_path = os.path.join(tmp_folder, filename)
+            shutil.rmtree(file_path)
+        except OSError as e:
+            pass
+
+
+def main(driver):
     attemp = 0
-    driver = webdriver.Chrome(ChromeDriverManager().install(), chrome_options=options)
     driver.get('https://my.roboforex.com/en/operations/withdraw-funds/form/ccard-out-bz/')
     time.sleep(15)
+    # clean_tmp_folder()
     try:
         login_auth(driver)
     except Exception as e:
@@ -54,6 +67,7 @@ def main():
     driver.get('https://my.roboforex.com/en/operations/withdraw-funds/form/ccard-out-bz/')
     time.sleep(3)
     while True:
+        logging.info(f'-------------------------------------------------------')
         for account in accounts:
             try:
                 driver.find_element_by_css_selector('div.count-select').click()
@@ -72,7 +86,7 @@ def main():
                 print(f'Balance: {balance}')
                 print(f'Withdraw {withdraw}')
                 drawdown = calc_drawdown(balance, withdraw)
-                logging.info(f'Request successufully. Account: {account}, drawdown: {drawdown}%.')
+                logging.info(f'Request successufully. Account: {account}, balance {balance}, drawdown: {drawdown}%.')
                 if drawdown > check_file_config()[f'{account}']['percent'] and check_file_config()[
                     "active"]:
                     bot.send_message(credentials_bot["telegram"]["user_bmi"],
@@ -81,14 +95,17 @@ def main():
                                           f"\nBalance: {balance}{currency}."
                                           f"\nAvaliable withdraw: {withdraw}{currency}."
                                           f"\nCheck please.", parse_mode='html')
+                attemp = 0
             except Exception as e:
-                attemp += 1
-                if attemp < 2:
-                    bot.send_message(credentials_bot["telegram"]["user_bmi"], text=e)
-                    time.sleep(30)
+                if attemp < 3:
+                    bot.send_message(credentials_bot["telegram"]["jooble_logger"],
+                                     text=f'Attempt: {attemp}, Main error: {e}')
+                    time.sleep(20)
+                    attemp += 1
                 else:
-                    driver.close()
-                    raise IndexError('Something was wrong')
+                    login_auth(driver)
+                    driver.get('https://my.roboforex.com/en/operations/withdraw-funds/form/ccard-out-bz/')
+                    time.sleep(3)
         time.sleep(check_file_config()["interval"])
 
 
@@ -98,12 +115,16 @@ def calc_drawdown(balance, withdraw):
 
 
 if __name__ == "__main__":
+    driver = webdriver.Chrome(ChromeDriverManager().install(), chrome_options=options)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)  # or whatever
-    handler = logging.FileHandler('logs/' + datetime.now().strftime('%Y-%m-%d') + '.txt', 'a', 'utf-8')
+    handler = logging.FileHandler('logs/' + datetime.now().strftime('%Y-%m-%d') + '.txt', 'a',
+                                  'utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(message)s'))  # or whatever
     root_logger.addHandler(handler)
+
     try:
-        main()
+        main(driver)
     except Exception as e:
-        bot.send_message(credentials_bot["telegram"]["user_bmi"], text=f'Main error: {e}')
+        bot.send_message(credentials_bot["telegram"]["jooble_logger"], text=f'Main error: {e}')
+        driver.close()
