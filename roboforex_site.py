@@ -77,7 +77,7 @@ def main(driver):
                 time.sleep(3)
                 balance = driver.find_element_by_css_selector('div[data-auto-balance]').text
                 currency = re.search('USD|EUR', balance).group(0)
-                balance = int(float(re.match('\d+\,*\d*', balance).group(0).replace(',', '.')) * 10)
+                balance = int(float(re.match('[\d+\,]+', balance).group(0).replace(',', '', 2)) / 100)
 
                 withdraw = driver.find_element_by_css_selector(
                     'input#max_withdrawal_amount').get_attribute('value')
